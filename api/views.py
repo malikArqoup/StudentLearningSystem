@@ -1,14 +1,16 @@
-from django.contrib.auth import authenticate
-
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from rest_framework_simplejwt.tokens import RefreshToken
-
-from .serializers import RegisterSerializer
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
-from rest_framework.permissions import IsAuthenticated
+
+from .models import User
+from .serializers import RegisterSerializer, MeUpdateSerializer
+from .permissions import IsAuthenticatedUser
+
+
 class HealthView(APIView):
     def get(self, request):
         return Response({
@@ -45,13 +47,12 @@ class LoginView(APIView):
         email = request.data.get("email")
         password = request.data.get("password")
 
-        user = authenticate(
-            request,
-            username=email,
-            password=password
-        )
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            user = None
 
-        if user is None:
+        if user is None or not user.check_password(password):
             return Response(
                 {
                     "error": {
@@ -59,6 +60,16 @@ class LoginView(APIView):
                     }
                 },
                 status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        if not user.is_active:
+            return Response(
+                {
+                    "error": {
+                        "code": "account_inactive"
+                    }
+                },
+                status=status.HTTP_403_FORBIDDEN
             )
 
         refresh = RefreshToken.for_user(user)
@@ -75,25 +86,45 @@ class LoginView(APIView):
                 "avatar": user.avatar,
             }
         })
+
+
 class RefreshView(APIView):
     def post(self, request):
         serializer = TokenRefreshSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as e:
+            raise InvalidToken(e.args[0])
 
         return Response(serializer.validated_data)
 
+
 class LogoutView(APIView):
-      def post(self, request):
+    def post(self, request):
         refresh = request.data.get("refresh")
 
-        token = RefreshToken(refresh)
-        token.blacklist()
+        if not refresh:
+            return Response(
+                {
+                    "error": {
+                        "code": "refresh_required"
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            token = RefreshToken(refresh)
+            token.blacklist()
+        except TokenError as e:
+            raise InvalidToken(e.args[0])
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class MeView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedUser]
 
     def get(self, request):
         user = request.user
@@ -113,3 +144,10 @@ class MeView(APIView):
                 "locale": user.locale,
             }
         })
+
+    def patch(self, request):
+        serializer = MeUpdateSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return self.get(request)
