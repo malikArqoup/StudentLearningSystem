@@ -1,14 +1,20 @@
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination
 
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 
 from .models import User
-from .serializers import RegisterSerializer, MeUpdateSerializer
-from .permissions import IsAuthenticatedUser
+from .serializers import (
+    RegisterSerializer,
+    MeUpdateSerializer,
+    UserListSerializer,
+    UserCreateSerializer,
+)
+from .permissions import IsAuthenticatedUser, IsAdminUser
 
 
 class HealthView(APIView):
@@ -146,8 +152,41 @@ class MeView(APIView):
         })
 
     def patch(self, request):
-        serializer = MeUpdateSerializer(request.user, data=request.data, partial=True)
+        serializer = MeUpdateSerializer(
+            request.user,
+            data=request.data,
+            partial=True
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
         return self.get(request)
+
+
+class UserPagination(PageNumberPagination):
+    page_size = 10
+
+
+class UserListCreateView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        users = User.objects.all().order_by("-date_joined")
+
+        paginator = UserPagination()
+        page = paginator.paginate_queryset(users, request)
+
+        serializer = UserListSerializer(page, many=True)
+
+        return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request):
+        serializer = UserCreateSerializer(data=request.data)
+
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        return Response(
+            UserListSerializer(user).data,
+            status=status.HTTP_201_CREATED,
+        )
