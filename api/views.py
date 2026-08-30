@@ -13,6 +13,7 @@ from .serializers import (
     MeUpdateSerializer,
     UserListSerializer,
     UserCreateSerializer,
+    UserUpdateSerializer,
 )
 from .permissions import IsAuthenticatedUser, IsAdminUser
 
@@ -190,3 +191,57 @@ class UserListCreateView(APIView):
             UserListSerializer(user).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class UserDetailView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get_user(self, user_id):
+        try:
+            return User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return None
+
+    def get(self, request, user_id):
+        user = self.get_user(user_id)
+
+        if user is None:
+            return Response(
+                {"detail": "User not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(UserListSerializer(user).data)
+
+    def patch(self, request, user_id):
+        user = self.get_user(user_id)
+
+        if user is None:
+            return Response(
+                {"detail": "User not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = UserUpdateSerializer(
+            user,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(UserListSerializer(user).data)
+
+    def delete(self, request, user_id):
+        user = self.get_user(user_id)
+
+        if user is None:
+            return Response(
+                {"detail": "User not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

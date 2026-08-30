@@ -8,8 +8,8 @@ from .views import (
     LogoutView,
     MeView,
     UserListCreateView,
+    UserDetailView,
 )
-
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
@@ -21,4 +21,5 @@ urlpatterns = [
     path("auth/me/", MeView.as_view(), name="me"),
 
     path("users/", UserListCreateView.as_view(), name="users"),
+    path("users/<int:user_id>/", UserDetailView.as_view(), name="user-detail"),
 ]

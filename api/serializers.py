@@ -86,3 +86,24 @@ class UserCreateSerializer(serializers.ModelSerializer):
         user.save()
 
         return user
+
+
+class UserUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            "first_name",
+            "last_name",
+            "role",
+            "is_active",
+        ]
+
+    def validate_role(self, value):
+        allowed_roles = ["student", "instructor"]
+
+        if value not in allowed_roles:
+            raise serializers.ValidationError(
+                "Role must be either student or instructor."
+            )
+
+        return value
