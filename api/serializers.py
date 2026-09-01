@@ -15,13 +15,6 @@ class RegisterSerializer(serializers.ModelSerializer):
             "last_name",
         ]
 
-    def create(self, validated_data):
-        password = validated_data.pop("password")
-        user = User(**validated_data)
-        user.set_password(password)
-        user.save()
-        return user
-
 
 class MeUpdateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -77,15 +70,6 @@ class UserCreateSerializer(serializers.ModelSerializer):
             )
 
         return value
-
-    def create(self, validated_data):
-        password = validated_data.pop("password")
-
-        user = User(**validated_data)
-        user.set_password(password)
-        user.save()
-
-        return user
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):

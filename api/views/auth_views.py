@@ -1,29 +1,15 @@
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.pagination import PageNumberPagination
 
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 
-from .models import User
-from .serializers import (
-    RegisterSerializer,
-    MeUpdateSerializer,
-    UserListSerializer,
-    UserCreateSerializer,
-    UserUpdateSerializer,
-)
-from .permissions import IsAuthenticatedUser, IsAdminUser
-
-
-class HealthView(APIView):
-    def get(self, request):
-        return Response({
-            "status": "ok",
-            "version": "1.0.0"
-        })
+from ..serializers import RegisterSerializer, MeUpdateSerializer
+from ..permissions import IsAuthenticatedUser
+from ..components import user_component, LoginResult
+from ..repositories import user_repository
 
 
 class RegisterView(APIView):
@@ -31,7 +17,9 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
 
         if serializer.is_valid():
-            user = serializer.save()
+            validated_data = serializer.validated_data
+            password = validated_data.pop("password")
+            user = user_repository.create_user(password=password, **validated_data)
 
             return Response(
                 {
@@ -54,12 +42,9 @@ class LoginView(APIView):
         email = request.data.get("email")
         password = request.data.get("password")
 
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            user = None
+        result = user_component.authenticate(email, password)
 
-        if user is None or not user.check_password(password):
+        if result.status == LoginResult.INVALID_CREDENTIALS:
             return Response(
                 {
                     "error": {
@@ -69,7 +54,7 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        if not user.is_active:
+        if result.status == LoginResult.ACCOUNT_INACTIVE:
             return Response(
                 {
                     "error": {
@@ -79,6 +64,7 @@ class LoginView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        user = result.user
         refresh = RefreshToken.for_user(user)
 
         return Response({
@@ -87,7 +73,7 @@ class LoginView(APIView):
             "user": {
                 "id": user.id,
                 "email": user.email,
-                "full_name": f"{user.first_name} {user.last_name}".strip(),
+                "full_name": user_component.get_full_name(user),
                 "role": user.role,
                 "institution_id": user.institution_id,
                 "avatar": user.avatar,
@@ -139,7 +125,7 @@ class MeView(APIView):
         return Response({
             "id": user.id,
             "email": user.email,
-            "full_name": f"{user.first_name} {user.last_name}".strip(),
+            "full_name": user_component.get_full_name(user),
             "role": user.role,
             "institution_id": user.institution_id,
             "avatar": user.avatar,
@@ -159,89 +145,6 @@ class MeView(APIView):
             partial=True
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        user_repository.update_user(request.user, **serializer.validated_data)
 
         return self.get(request)
-
-
-class UserPagination(PageNumberPagination):
-    page_size = 10
-
-
-class UserListCreateView(APIView):
-    permission_classes = [IsAdminUser]
-
-    def get(self, request):
-        users = User.objects.all().order_by("-date_joined")
-
-        paginator = UserPagination()
-        page = paginator.paginate_queryset(users, request)
-
-        serializer = UserListSerializer(page, many=True)
-
-        return paginator.get_paginated_response(serializer.data)
-
-    def post(self, request):
-        serializer = UserCreateSerializer(data=request.data)
-
-        serializer.is_valid(raise_exception=True)
-        user = serializer.save()
-
-        return Response(
-            UserListSerializer(user).data,
-            status=status.HTTP_201_CREATED,
-        )
-
-
-class UserDetailView(APIView):
-    permission_classes = [IsAdminUser]
-
-    def get_user(self, user_id):
-        try:
-            return User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            return None
-
-    def get(self, request, user_id):
-        user = self.get_user(user_id)
-
-        if user is None:
-            return Response(
-                {"detail": "User not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        return Response(UserListSerializer(user).data)
-
-    def patch(self, request, user_id):
-        user = self.get_user(user_id)
-
-        if user is None:
-            return Response(
-                {"detail": "User not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        serializer = UserUpdateSerializer(
-            user,
-            data=request.data,
-            partial=True,
-        )
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-
-        return Response(UserListSerializer(user).data)
-
-    def delete(self, request, user_id):
-        user = self.get_user(user_id)
-
-        if user is None:
-            return Response(
-                {"detail": "User not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        user.is_active = False
-        user.save(update_fields=["is_active"])
-
-        return Response(status=status.HTTP_204_NO_CONTENT)
