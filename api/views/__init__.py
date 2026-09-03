@@ -5,6 +5,7 @@ from .auth_views import (
     RefreshView,
     LogoutView,
     MeView,
+    ChangePasswordView,
 )
 from .user_views import (
     UserPagination,
@@ -19,6 +20,7 @@ __all__ = [
     "RefreshView",
     "LogoutView",
     "MeView",
+    "ChangePasswordView",
     "UserPagination",
     "UserListCreateView",
     "UserDetailView",
