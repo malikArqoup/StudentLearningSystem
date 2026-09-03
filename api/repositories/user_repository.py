@@ -29,6 +29,11 @@ class UserRepository:
         user.save()
         return user
 
+    def set_password(self, user, new_password):
+        user.set_password(new_password)
+        user.save()
+        return user
+
     def deactivate(self, user):
         user.is_active = False
         user.save(update_fields=["is_active"])
