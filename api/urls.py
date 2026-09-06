@@ -10,6 +10,7 @@ from .views import (
     ChangePasswordView,
     UserListCreateView,
     UserDetailView,
+    CourseListCreateView,
 )
 
 urlpatterns = [
@@ -20,8 +21,22 @@ urlpatterns = [
     path("auth/refresh/", RefreshView.as_view(), name="refresh"),
     path("auth/logout/", LogoutView.as_view(), name="logout"),
     path("auth/me/", MeView.as_view(), name="me"),
-    path("auth/password/change/", ChangePasswordView.as_view(), name="password-change"),
+    path(
+        "auth/password/change/",
+        ChangePasswordView.as_view(),
+        name="password-change",
+    ),
 
     path("users/", UserListCreateView.as_view(), name="users"),
-    path("users/<int:user_id>/", UserDetailView.as_view(), name="user-detail"),
+    path(
+        "users/<int:user_id>/",
+        UserDetailView.as_view(),
+        name="user-detail",
+    ),
+
+    path(
+        "courses/",
+        CourseListCreateView.as_view(),
+        name="courses",
+    ),
 ]

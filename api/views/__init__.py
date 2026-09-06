@@ -12,6 +12,7 @@ from .user_views import (
     UserListCreateView,
     UserDetailView,
 )
+from .course_views import CourseListCreateView
 
 __all__ = [
     "HealthView",
@@ -24,4 +25,5 @@ __all__ = [
     "UserPagination",
     "UserListCreateView",
     "UserDetailView",
+    "CourseListCreateView",
 ]

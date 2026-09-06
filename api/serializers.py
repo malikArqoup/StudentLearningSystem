@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import User
+
+from .models import Course, User
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -96,3 +97,27 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             )
 
         return value
+
+
+class CourseCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Course
+        fields = [
+            "code",
+            "title",
+            "description",
+            "level",
+            "is_self_enroll_open",
+        ]
+
+
+class CourseResponseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Course
+        fields = [
+            "id",
+            "code",
+            "slug",
+            "status",
+            "instructor",
+        ]
