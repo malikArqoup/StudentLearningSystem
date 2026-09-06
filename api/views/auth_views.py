@@ -6,9 +6,13 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 
-from ..serializers import RegisterSerializer, MeUpdateSerializer
+from ..serializers import (
+    RegisterSerializer,
+    MeUpdateSerializer,
+    ChangePasswordSerializer,
+)
 from ..permissions import IsAuthenticatedUser
-from ..components import user_component, LoginResult
+from ..components import user_component, LoginResult, ChangePasswordResult
 from ..repositories import user_repository
 
 
@@ -148,3 +152,39 @@ class MeView(APIView):
         user_repository.update_user(request.user, **serializer.validated_data)
 
         return self.get(request)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticatedUser]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        result = user_component.change_password(
+            request.user,
+            serializer.validated_data["old_password"],
+            serializer.validated_data["new_password"],
+        )
+
+        if result.status == ChangePasswordResult.INVALID_OLD_PASSWORD:
+            return Response(
+                {
+                    "error": {
+                        "code": "invalid_old_password"
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if result.status == ChangePasswordResult.PASSWORD_TOO_WEAK:
+            return Response(
+                {
+                    "error": {
+                        "code": "password_too_weak"
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
