@@ -11,6 +11,8 @@ from .views import (
     UserListCreateView,
     UserDetailView,
     CourseListCreateView,
+    EnrollmentListCreateView,
+    EnrollmentDetailView,
 )
 
 urlpatterns = [
@@ -38,5 +40,16 @@ urlpatterns = [
         "courses/",
         CourseListCreateView.as_view(),
         name="courses",
+    ),
+
+    path(
+        "enrollments/",
+        EnrollmentListCreateView.as_view(),
+        name="enrollments",
+    ),
+    path(
+        "enrollments/<int:enrollment_id>/",
+        EnrollmentDetailView.as_view(),
+        name="enrollment-detail",
     ),
 ]

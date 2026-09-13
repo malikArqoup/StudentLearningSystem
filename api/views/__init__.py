@@ -13,6 +13,7 @@ from .user_views import (
     UserDetailView,
 )
 from .course_views import CourseListCreateView
+from .enrollment_views import EnrollmentListCreateView, EnrollmentDetailView
 
 __all__ = [
     "HealthView",
@@ -26,4 +27,6 @@ __all__ = [
     "UserListCreateView",
     "UserDetailView",
     "CourseListCreateView",
+    "EnrollmentListCreateView",
+    "EnrollmentDetailView",
 ]

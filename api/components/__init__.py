@@ -5,6 +5,7 @@ from .user_component import (
     ChangePasswordResult,
 )
 from .course_component import CourseComponent, course_component
+from .enrollment_component import EnrollmentComponent, enrollment_component
 
 __all__ = [
     "UserComponent",
@@ -13,4 +14,6 @@ __all__ = [
     "ChangePasswordResult",
     "CourseComponent",
     "course_component",
+    "EnrollmentComponent",
+    "enrollment_component",
 ]

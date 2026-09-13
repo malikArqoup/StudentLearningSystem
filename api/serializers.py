@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Course, User
+from .models import Course, Enrollment, User
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -120,4 +120,47 @@ class CourseResponseSerializer(serializers.ModelSerializer):
             "slug",
             "status",
             "instructor",
+        ]
+
+
+class EnrollmentCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Enrollment
+        fields = [
+            "student",
+            "course",
+            "due_date",
+        ]
+
+    def validate_student(self, value):
+        if value.role != "student":
+            raise serializers.ValidationError(
+                "Selected user is not a student."
+            )
+
+        return value
+
+
+class EnrollmentUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Enrollment
+        fields = [
+            "status",
+            "due_date",
+        ]
+
+
+class EnrollmentResponseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Enrollment
+        fields = [
+            "id",
+            "student",
+            "course",
+            "assigned_by",
+            "source",
+            "status",
+            "due_date",
+            "progress_percent",
+            "created_at",
         ]
