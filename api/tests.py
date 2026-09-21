@@ -7,7 +7,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from api.models import Course, Enrollment, ExternalCourse, ExternalEnrollment, User
+from api.integrations import OpenEdXClient
+from api.models import Course, Enrollment, ExternalCourse, User
 
 
 def auth_headers(user):
@@ -385,123 +386,83 @@ class ExternalCourseListTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
-class ExternalCourseEnrollTests(TestCase):
+class OpenEdXClientNormalizationTests(TestCase):
+    """
+    Verifies OpenEdXClient.normalize_course() against the real response
+    shape returned by https://courses.edx.org/api/courses/v1/courses/
+    (results[].id/course_id, name, short_description, media.image.*,
+    media.course_image.uri) - no network access required.
+    """
+
     def setUp(self):
-        self.client = APIClient()
+        self.client_instance = OpenEdXClient()
 
-        self.student = User.objects.create_user(
-            email="ext_student@example.com",
-            password="Pass123!",
-            role="student",
-        )
-        self.instructor = User.objects.create_user(
-            email="ext_instructor@example.com",
-            password="Pass123!",
-            role="instructor",
-        )
+    def test_title_and_description_mapping(self):
+        raw_course = {
+            "id": "course-v1:DemoX+Python+2026",
+            "course_id": "course-v1:DemoX+Python+2026",
+            "name": "Python Programming",
+            "short_description": "Learn Python programming.",
+            "media": {},
+        }
 
-        self.external_course = ExternalCourse.objects.create(
-            provider=ExternalCourse.Provider.OPEN_EDX,
-            external_id="course-v1:DemoX+Python+2026",
-            title="Python Programming",
-            description="Learn Python programming.",
-            course_url="https://lms.example.com/courses/course-v1:DemoX+Python+2026/course/",
-            image_url="",
-        )
+        normalized = self.client_instance.normalize_course(raw_course)
 
-        self.url = f"/api/v1/external-courses/{self.external_course.id}/enroll/"
+        self.assertEqual(normalized["external_id"], "course-v1:DemoX+Python+2026")
+        self.assertEqual(normalized["provider"], "OPEN_EDX")
+        self.assertEqual(normalized["title"], "Python Programming")
+        self.assertEqual(normalized["description"], "Learn Python programming.")
 
-    @patch("api.components.external_course_component.open_edx_client")
-    def test_student_can_enroll_successfully(self, mock_client):
-        mock_client.enroll_student.return_value = {"is_active": True}
+    def test_image_mapping_prefers_media_image_raw(self):
+        raw_course = {
+            "id": "course-v1:DemoX+Python+2026",
+            "name": "Python Programming",
+            "short_description": "",
+            "media": {
+                "image": {
+                    "raw": "https://courses.edx.org/asset-v1/raw.jpg",
+                    "small": "https://courses.edx.org/asset-v1/small.jpg",
+                    "large": "https://courses.edx.org/asset-v1/large.jpg",
+                },
+                "course_image": {"uri": "/asset-v1/course_image.jpg"},
+            },
+        }
 
-        self.client.credentials(**auth_headers(self.student))
-        response = self.client.post(self.url)
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-    @patch("api.components.external_course_component.open_edx_client")
-    def test_successful_enrollment_creates_local_record(self, mock_client):
-        mock_client.enroll_student.return_value = {"is_active": True}
-
-        self.client.credentials(**auth_headers(self.student))
-        self.client.post(self.url)
-
-        self.assertTrue(
-            ExternalEnrollment.objects.filter(
-                student=self.student,
-                external_course=self.external_course,
-            ).exists()
-        )
-
-    @patch("api.components.external_course_component.open_edx_client")
-    def test_response_includes_course_url(self, mock_client):
-        mock_client.enroll_student.return_value = {"is_active": True}
-
-        self.client.credentials(**auth_headers(self.student))
-        response = self.client.post(self.url)
+        normalized = self.client_instance.normalize_course(raw_course)
 
         self.assertEqual(
-            response.data["course_url"], self.external_course.course_url
+            normalized["image_url"],
+            "https://courses.edx.org/asset-v1/raw.jpg",
         )
 
-    @patch("api.components.external_course_component.open_edx_client")
-    def test_duplicate_enrollment_is_rejected(self, mock_client):
-        mock_client.enroll_student.return_value = {"is_active": True}
+    def test_image_mapping_falls_back_to_course_image_uri(self):
+        raw_course = {
+            "id": "course-v1:DemoX+Python+2026",
+            "name": "Python Programming",
+            "short_description": "",
+            "media": {
+                "course_image": {"uri": "/asset-v1/course_image.jpg"},
+            },
+        }
 
-        self.client.credentials(**auth_headers(self.student))
-        self.client.post(self.url)
-        response = self.client.post(self.url)
+        normalized = self.client_instance.normalize_course(raw_course)
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(
-            ExternalEnrollment.objects.filter(
-                student=self.student,
-                external_course=self.external_course,
-            ).count(),
-            1,
+            normalized["image_url"],
+            f"{self.client_instance.base_url}/asset-v1/course_image.jpg",
         )
 
-    def test_nonexistent_external_course_returns_404(self):
-        self.client.credentials(**auth_headers(self.student))
-        response = self.client.post("/api/v1/external-courses/999999/enroll/")
+    def test_course_url_is_constructed_from_course_id(self):
+        raw_course = {
+            "id": "course-v1:DemoX+Python+2026",
+            "name": "Python Programming",
+            "short_description": "",
+            "media": {},
+        }
 
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        normalized = self.client_instance.normalize_course(raw_course)
 
-    def test_non_student_cannot_enroll(self):
-        self.client.credentials(**auth_headers(self.instructor))
-        response = self.client.post(self.url)
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_unauthenticated_user_cannot_enroll(self):
-        response = self.client.post(self.url)
-
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
-    @patch("api.components.external_course_component.open_edx_client")
-    def test_open_edx_failure_returns_clean_error(self, mock_client):
-        mock_client.enroll_student.side_effect = requests.exceptions.HTTPError(
-            "500 Server Error"
-        )
-
-        self.client.credentials(**auth_headers(self.student))
-        response = self.client.post(self.url)
-
-        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
-
-    @patch("api.components.external_course_component.open_edx_client")
-    def test_open_edx_failure_does_not_create_local_enrollment(self, mock_client):
-        mock_client.enroll_student.side_effect = requests.exceptions.HTTPError(
-            "500 Server Error"
-        )
-
-        self.client.credentials(**auth_headers(self.student))
-        self.client.post(self.url)
-
-        self.assertFalse(
-            ExternalEnrollment.objects.filter(
-                student=self.student,
-                external_course=self.external_course,
-            ).exists()
+        self.assertEqual(
+            normalized["course_url"],
+            f"{self.client_instance.base_url}/courses/course-v1:DemoX+Python+2026/course/",
         )

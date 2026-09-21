@@ -9,7 +9,6 @@ from .enrollment_component import EnrollmentComponent, enrollment_component
 from .external_course_component import (
     ExternalCourseComponent,
     external_course_component,
-    ExternalEnrollmentResult,
 )
 
 __all__ = [
@@ -23,5 +22,4 @@ __all__ = [
     "enrollment_component",
     "ExternalCourseComponent",
     "external_course_component",
-    "ExternalEnrollmentResult",
 ]

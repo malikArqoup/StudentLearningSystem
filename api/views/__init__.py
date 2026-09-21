@@ -14,10 +14,7 @@ from .user_views import (
 )
 from .course_views import CourseListCreateView
 from .enrollment_views import EnrollmentListCreateView, EnrollmentDetailView
-from .external_course_views import (
-    ExternalCourseListView,
-    ExternalCourseEnrollView,
-)
+from .external_course_views import ExternalCourseListView
 
 __all__ = [
     "HealthView",
@@ -34,5 +31,4 @@ __all__ = [
     "EnrollmentListCreateView",
     "EnrollmentDetailView",
     "ExternalCourseListView",
-    "ExternalCourseEnrollView",
 ]

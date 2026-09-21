@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Course, Enrollment, ExternalEnrollment, User
+from .models import Course, Enrollment, User
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -182,21 +182,3 @@ class ExternalCourseResponseSerializer(serializers.Serializer):
         allow_blank=True,
         required=False,
     )
-
-
-class ExternalEnrollmentResponseSerializer(serializers.ModelSerializer):
-    course_url = serializers.SerializerMethodField()
-
-    class Meta:
-        model = ExternalEnrollment
-        fields = [
-            "id",
-            "student",
-            "external_course",
-            "status",
-            "created_at",
-            "course_url",
-        ]
-
-    def get_course_url(self, obj):
-        return obj.external_course.course_url
