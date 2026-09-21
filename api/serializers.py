@@ -164,3 +164,21 @@ class EnrollmentResponseSerializer(serializers.ModelSerializer):
             "progress_percent",
             "created_at",
         ]
+
+
+class ExternalCourseResponseSerializer(serializers.Serializer):
+    external_id = serializers.CharField()
+    provider = serializers.CharField()
+    title = serializers.CharField()
+    description = serializers.CharField(
+        allow_blank=True,
+        required=False,
+    )
+    course_url = serializers.URLField(
+        allow_blank=True,
+        required=False,
+    )
+    image_url = serializers.URLField(
+        allow_blank=True,
+        required=False,
+    )

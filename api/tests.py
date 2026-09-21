@@ -1,9 +1,14 @@
+from unittest.mock import patch
+
+import requests
+
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from api.models import Course, Enrollment, User
+from api.integrations import OpenEdXClient
+from api.models import Course, Enrollment, ExternalCourse, User
 
 
 def auth_headers(user):
@@ -276,3 +281,188 @@ class EnrollmentUpdateTests(TestCase):
         self.assertEqual(self.enrollment.assigned_by_id, self.admin.id)
         self.assertEqual(self.enrollment.progress_percent, 0)
         self.assertEqual(self.enrollment.status, Enrollment.Status.IN_PROGRESS)
+
+
+def _normalized_course(**overrides):
+    course = {
+        "external_id": "course-v1:DemoX+Python+2026",
+        "provider": "OPEN_EDX",
+        "title": "Python Programming",
+        "description": "Learn Python programming.",
+        "course_url": "https://lms.example.com/courses/course-v1:DemoX+Python+2026/course/",
+        "image_url": "https://lms.example.com/asset-v1/image.png",
+    }
+    course.update(overrides)
+    return course
+
+
+class ExternalCourseListTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.url = "/api/v1/external-courses/"
+
+        self.user = User.objects.create_user(
+            email="ext_user@example.com",
+            password="Pass123!",
+            role="student",
+        )
+
+    @patch("api.components.external_course_component.open_edx_client")
+    def test_authenticated_user_can_retrieve_normalized_courses(self, mock_client):
+        mock_client.get_courses.return_value = [_normalized_course()]
+
+        self.client.credentials(**auth_headers(self.user))
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(
+            response.data[0]["external_id"], "course-v1:DemoX+Python+2026"
+        )
+        self.assertEqual(response.data[0]["title"], "Python Programming")
+
+    @patch("api.components.external_course_component.open_edx_client")
+    def test_courses_are_created_locally(self, mock_client):
+        mock_client.get_courses.return_value = [_normalized_course()]
+
+        self.client.credentials(**auth_headers(self.user))
+        self.client.get(self.url)
+
+        self.assertTrue(
+            ExternalCourse.objects.filter(
+                provider="OPEN_EDX",
+                external_id="course-v1:DemoX+Python+2026",
+            ).exists()
+        )
+
+    @patch("api.components.external_course_component.open_edx_client")
+    def test_courses_are_updated_locally_on_subsequent_calls(self, mock_client):
+        mock_client.get_courses.return_value = [_normalized_course()]
+
+        self.client.credentials(**auth_headers(self.user))
+        self.client.get(self.url)
+
+        mock_client.get_courses.return_value = [
+            _normalized_course(title="Python Programming (Updated)")
+        ]
+        self.client.get(self.url)
+
+        self.assertEqual(
+            ExternalCourse.objects.filter(
+                provider="OPEN_EDX",
+                external_id="course-v1:DemoX+Python+2026",
+            ).count(),
+            1,
+        )
+        course = ExternalCourse.objects.get(
+            provider="OPEN_EDX",
+            external_id="course-v1:DemoX+Python+2026",
+        )
+        self.assertEqual(course.title, "Python Programming (Updated)")
+
+    @patch("api.components.external_course_component.open_edx_client")
+    def test_provider_is_open_edx(self, mock_client):
+        mock_client.get_courses.return_value = [_normalized_course()]
+
+        self.client.credentials(**auth_headers(self.user))
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.data[0]["provider"], "OPEN_EDX")
+
+    @patch("api.components.external_course_component.open_edx_client")
+    def test_external_provider_failure_returns_clean_502(self, mock_client):
+        mock_client.get_courses.side_effect = requests.exceptions.ConnectionError(
+            "connection refused"
+        )
+
+        self.client.credentials(**auth_headers(self.user))
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+
+    def test_unauthenticated_request_is_rejected(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class OpenEdXClientNormalizationTests(TestCase):
+    """
+    Verifies OpenEdXClient.normalize_course() against the real response
+    shape returned by https://courses.edx.org/api/courses/v1/courses/
+    (results[].id/course_id, name, short_description, media.image.*,
+    media.course_image.uri) - no network access required.
+    """
+
+    def setUp(self):
+        self.client_instance = OpenEdXClient()
+
+    def test_title_and_description_mapping(self):
+        raw_course = {
+            "id": "course-v1:DemoX+Python+2026",
+            "course_id": "course-v1:DemoX+Python+2026",
+            "name": "Python Programming",
+            "short_description": "Learn Python programming.",
+            "media": {},
+        }
+
+        normalized = self.client_instance.normalize_course(raw_course)
+
+        self.assertEqual(normalized["external_id"], "course-v1:DemoX+Python+2026")
+        self.assertEqual(normalized["provider"], "OPEN_EDX")
+        self.assertEqual(normalized["title"], "Python Programming")
+        self.assertEqual(normalized["description"], "Learn Python programming.")
+
+    def test_image_mapping_prefers_media_image_raw(self):
+        raw_course = {
+            "id": "course-v1:DemoX+Python+2026",
+            "name": "Python Programming",
+            "short_description": "",
+            "media": {
+                "image": {
+                    "raw": "https://courses.edx.org/asset-v1/raw.jpg",
+                    "small": "https://courses.edx.org/asset-v1/small.jpg",
+                    "large": "https://courses.edx.org/asset-v1/large.jpg",
+                },
+                "course_image": {"uri": "/asset-v1/course_image.jpg"},
+            },
+        }
+
+        normalized = self.client_instance.normalize_course(raw_course)
+
+        self.assertEqual(
+            normalized["image_url"],
+            "https://courses.edx.org/asset-v1/raw.jpg",
+        )
+
+    def test_image_mapping_falls_back_to_course_image_uri(self):
+        raw_course = {
+            "id": "course-v1:DemoX+Python+2026",
+            "name": "Python Programming",
+            "short_description": "",
+            "media": {
+                "course_image": {"uri": "/asset-v1/course_image.jpg"},
+            },
+        }
+
+        normalized = self.client_instance.normalize_course(raw_course)
+
+        self.assertEqual(
+            normalized["image_url"],
+            f"{self.client_instance.base_url}/asset-v1/course_image.jpg",
+        )
+
+    def test_course_url_is_constructed_from_course_id(self):
+        raw_course = {
+            "id": "course-v1:DemoX+Python+2026",
+            "name": "Python Programming",
+            "short_description": "",
+            "media": {},
+        }
+
+        normalized = self.client_instance.normalize_course(raw_course)
+
+        self.assertEqual(
+            normalized["course_url"],
+            f"{self.client_instance.base_url}/courses/course-v1:DemoX+Python+2026/course/",
+        )
