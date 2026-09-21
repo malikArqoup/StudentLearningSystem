@@ -6,6 +6,11 @@ from .user_component import (
 )
 from .course_component import CourseComponent, course_component
 from .enrollment_component import EnrollmentComponent, enrollment_component
+from .external_course_component import (
+    ExternalCourseComponent,
+    external_course_component,
+    ExternalEnrollmentResult,
+)
 
 __all__ = [
     "UserComponent",
@@ -16,4 +21,7 @@ __all__ = [
     "course_component",
     "EnrollmentComponent",
     "enrollment_component",
+    "ExternalCourseComponent",
+    "external_course_component",
+    "ExternalEnrollmentResult",
 ]

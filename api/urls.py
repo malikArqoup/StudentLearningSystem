@@ -13,6 +13,8 @@ from .views import (
     CourseListCreateView,
     EnrollmentListCreateView,
     EnrollmentDetailView,
+    ExternalCourseListView,
+    ExternalCourseEnrollView,
 )
 
 urlpatterns = [
@@ -51,5 +53,15 @@ urlpatterns = [
         "enrollments/<int:enrollment_id>/",
         EnrollmentDetailView.as_view(),
         name="enrollment-detail",
+    ),
+    path(
+        "external-courses/",
+        ExternalCourseListView.as_view(),
+        name="external-courses",
+    ),
+    path(
+        "external-courses/<int:course_id>/enroll/",
+        ExternalCourseEnrollView.as_view(),
+        name="external-course-enroll",
     ),
 ]
